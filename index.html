@@ -1,0 +1,412 @@
+<!-- 
+  [프론트엔드 UI/UX] 금융 보안 가상 키패드 화면 및 터치 좌표 교란 모듈
+  
+  - 역할: 0~9 랜덤 키패드 배치 및 클릭 위치 추적 방지 기능 제공 + 다른 버튼 가짜 클릭 
+  - 금융 보안 포인트: 해커가 마우스 좌표나 화면 녹화로 비밀번호를 훔쳐보는 공격 방어
+-->
+  
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>금융 보안 가상 키패드 데모</title>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --accent-color: #e74c3c;
+            --success-color: #2ecc71;
+            --bg-color: #f5f6fa;
+        }
+
+        body {
+            font-family: 'Malgun Gothic', sans-serif;
+            background-color: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            transition: background-color 0.5s ease; /* [추가] 배경색 변환 애니메이션 */
+        }
+
+        .container {
+            background-color: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            padding: 30px;
+            width: 380px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.5s ease;
+        }
+
+        .header h2 {
+            color: var(--primary-color);
+            margin-bottom: 5px;
+            font-size: 20px;
+        }
+
+        .header p {
+            color: #7f8c8d;
+            font-size: 13px;
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+
+        .password-display {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background-color: #ddd;
+            transition: background-color 0.2s;
+        }
+
+        .dot.active {
+            background-color: var(--primary-color);
+        }
+
+        /* 가상 키패드 그리드 */
+        .keypad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 25px;
+        }
+
+        .key {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px 0;
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--primary-color);
+            cursor: pointer;
+            transition: all 0.1s;
+            user-select: none;
+        }
+
+        .key:active, .key.fake-active {
+            background-color: #cbd5e1 !important;
+            transform: scale(0.95);
+        }
+
+        .key.functional {
+            background-color: #e2e8f0;
+            font-size: 14px;
+        }
+
+        /* 실시간 메모리 상태 모니터 */
+        .memory-monitor {
+            background-color: #1e1e1e;
+            border-radius: 8px;
+            padding: 15px;
+            color: #00ff00;
+            font-family: 'Courier New', Courier, monospace;
+            text-align: left;
+            font-size: 12px;
+            margin-top: 20px;
+            border: 1px solid #333;
+            height: 120px;
+            overflow-y: auto;
+        }
+
+        .memory-title {
+            color: #ffffff;
+            font-weight: bold;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .live-status {
+            color: var(--accent-color);
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            50% { opacity: 0; }
+        }
+
+        .log-line {
+            margin: 4px 0;
+        }
+
+        /* [추가] 모던 은행 앱 스타일 결과 화면 오버레이 */
+        .result-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease;
+            z-index: 10;
+        }
+
+        .result-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .result-overlay.success {
+            background-color: rgba(46, 204, 113, 0.95); /* 은행 표준 안전 초록색 */
+        }
+
+        .result-overlay.fail {
+            background-color: rgba(231, 76, 60, 0.95); /* 경고 빨간색 */
+        }
+
+        .result-icon {
+            font-size: 60px;
+            margin-bottom: 15px;
+            animation: pop 0.4s ease;
+        }
+
+        .result-title {
+            font-size: 22px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .result-desc {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 25px;
+        }
+
+        .result-btn {
+            background-color: white;
+            color: var(--primary-color);
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        @keyframes pop {
+            0% { transform: scale(0); }
+            80% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container" id="mainContainer">
+    <!-- 결과 연출 화면 (평소엔 숨김 상태) -->
+    <div class="result-overlay" id="resultOverlay">
+        <div class="result-icon" id="resultIcon">✓</div>
+        <div class="result-title" id="resultTitle">인증 성공</div>
+        <div class="result-desc" id="resultDesc">금융 홈 화면으로 안전하게 진입합니다.</div>
+        <button class="result-btn" onclick="closeResult()">확인</button>
+    </div>
+
+    <div class="header">
+        <h2>Security 가상 키패드</h2>
+        <p>비밀번호(4자리)를 입력하세요.</p>
+    </div>
+
+    <!-- 입력 상태 점 표시 -->
+    <div class="password-display">
+        <div class="dot" id="dot0"></div>
+        <div class="dot" id="dot1"></div>
+        <div class="dot" id="dot2"></div>
+        <div class="dot" id="dot3"></div>
+    </div>
+
+    <!-- 랜덤 배열되는 가상 키패드 -->
+    <div class="keypad" id="keypad"></div>
+
+    <!-- 실시간 메모리 감시 상태창 -->
+    <div class="memory-monitor" id="memoryMonitor">
+        <div class="memory-title">
+            <span>MEMORY MONITOR</span>
+            <span class="live-status">● LIVE</span>
+        </div>
+        <div id="memoryLogs">
+            <div class="log-line">> 시스템 구동 완료. 대기 중...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const CORRECT_PIN = ['1', '2', '3', '4'];
+    let inputBuffer = [' ', ' ', ' ', ' ']; 
+    let inputCount = 0;
+
+    // 키패드 생성 및 랜덤 배치
+    function generateKeypad() {
+        const numbers = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
+        
+        for (let i = numbers.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [numbers[i], numbers[j]] = [numbers[j], numbers[i]];
+        }
+
+        const keypadContainer = document.getElementById('keypad');
+        keypadContainer.innerHTML = ''; 
+
+        numbers.forEach((num, index) => {
+            if (index === 9) {
+                createKeyButton('초기화', () => resetAll(), true);
+            }
+            createKeyButton(num, () => handleInput(num), false, num);
+        });
+
+        createKeyButton('지우기', () => deleteLast(), true);
+    }
+
+    function createKeyButton(text, onClickAction, isFunctional = false, numValue = '') {
+        const btn = document.createElement('div');
+        btn.className = isFunctional ? 'key functional' : 'key';
+        if(numValue !== '') {
+            btn.classList.add('key-num');
+            btn.setAttribute('data-num', numValue);
+        }
+        btn.innerText = text;
+        btn.addEventListener('click', onClickAction);
+        document.getElementById('keypad').appendChild(btn);
+    }
+
+    // 실제 키패드 클릭 시 가짜 버튼들도 같이 타닥 깜빡이게 만드는 좌표 교란 함수
+    function triggerFakeClicks(realNum) {
+        const allNumKeys = Array.from(document.querySelectorAll('.key-num'));
+        const fakeKeys = allNumKeys.filter(key => key.getAttribute('data-num') !== realNum);
+        
+        const selectedFakeKeys = [];
+        while(selectedFakeKeys.length < 2) {
+            const randomKey = fakeKeys[Math.floor(Math.random() * fakeKeys.length)];
+            if(!selectedFakeKeys.includes(randomKey)) {
+                selectedFakeKeys.push(randomKey);
+            }
+        }
+
+        selectedFakeKeys.forEach(key => {
+            key.classList.add('fake-active');
+            setTimeout(() => {
+                key.classList.remove('fake-active');
+            }, 150); 
+        });
+
+        const fakeNums = selectedFakeKeys.map(k => k.getAttribute('data-num')).join(', ');
+        updateMemoryLog(`<span style="color: #54a0ff;">[보안 교란] 실제 입력값 외에 다른 숫자 [${fakeNums}] 동시 자극 처리</span>`);
+    }
+
+    function handleInput(num) {
+        if (inputCount < 4) {
+            inputBuffer[inputCount] = num; 
+            document.getElementById(`dot${inputCount}`).classList.add('active');
+            inputCount++;
+            
+            updateMemoryLog(`[입력됨] Buffer[${inputCount-1}] = '*'`);
+            triggerFakeClicks(num);
+
+            if (inputCount === 4) {
+                setTimeout(verifyPassword, 300);
+            }
+        }
+    }
+
+    function deleteLast() {
+        if (inputCount > 0) {
+            inputCount--;
+            inputBuffer[inputCount] = ' '; 
+            document.getElementById(`dot${inputCount}`).classList.remove('active');
+            updateMemoryLog(`[지움] Buffer[${inputCount}] 값 초기화 완료`);
+        }
+    }
+
+    function resetAll() {
+        inputBuffer = [' ', ' ', ' ', ' '];
+        inputCount = 0;
+        for(let i=0; i<4; i++) {
+            document.getElementById(`dot${i}`).classList.remove('active');
+        }
+        generateKeypad(); 
+        updateMemoryLog(`[초기화] 메모리 버퍼 전체 초기화 완료`);
+    }
+
+    // [수정] 모던 은행 앱 스타일 색상 연출 함수 연결
+    function verifyPassword() {
+        updateMemoryLog(`[검증 중] 내부 암호 배열과 대조 중...`);
+        
+        let isCorrect = true;
+        for (let i = 0; i < 4; i++) {
+            if (inputBuffer[i] !== CORRECT_PIN[i]) {
+                isCorrect = false;
+            }
+        }
+
+        for (let i = 0; i < 4; i++) {
+            inputBuffer[i] = '0'; 
+        }
+        
+        updateMemoryLog(`<span style="color: #ff9f43;">[보안 소멸] inputBuffer 소멸 => [${inputBuffer.join(', ')}] (Zeroization 완료)</span>`);
+
+        const overlay = document.getElementById('resultOverlay');
+        const icon = document.getElementById('resultIcon');
+        const title = document.getElementById('resultTitle');
+        const desc = document.getElementById('resultDesc');
+        const body = document.body;
+
+        // 초기 클래스 제거
+        overlay.className = 'result-overlay';
+
+        if (isCorrect) {
+            // 성공: 초록색 화면 연출
+            overlay.classList.add('active', 'success');
+            icon.innerText = '✓';
+            title.innerText = '인증 성공';
+            desc.innerText = '금융 홈 화면으로 안전하게 진입합니다.';
+            body.style.backgroundColor = '#d4edda'; // 브라우저 배경 연한 초록색으로 변경
+        } else {
+            // 실패: 빨간색 화면 연출
+            overlay.classList.add('active', 'fail');
+            icon.innerText = '✗';
+            title.innerText = '인증 실패';
+            desc.innerText = '비밀번호가 일치하지 않습니다. 다시 시도해 주세요.';
+            body.style.backgroundColor = '#f8d7da'; // 브라우저 배경 연한 빨간색으로 변경
+        }
+    }
+
+    // 결과 화면 닫기 버튼 눌렀을 때 초기화
+    function closeResult() {
+        document.getElementById('resultOverlay').classList.remove('active');
+        document.body.style.backgroundColor = 'var(--bg-color)'; // 원래 배경색으로 복구
+        resetAll();
+    }
+
+    function updateMemoryLog(message) {
+        const logBox = document.getElementById('memoryLogs');
+        const newLine = document.createElement('div');
+        newLine.className = 'log-line';
+        newLine.innerHTML = `> ${message}`;
+        logBox.appendChild(newLine);
+        
+        const monitor = document.getElementById('memoryMonitor');
+        monitor.scrollTop = monitor.scrollHeight;
+    }
+
+    generateKeypad();
+</script>
+
+</body>
+</html>
