@@ -1,8 +1,8 @@
 <!-- 
   [프론트엔드 UI/UX] 금융 보안 가상 키패드 화면 및 터치 좌표 교란 모듈
   
-  - 역할: 0~9 랜덤 키패드 배치 및 클릭 위치 추적 방지 기능 제공 + 다른 버튼 가짜 클릭 
-  - 금융 보안 포인트: 해커가 마우스 좌표나 화면 녹화로 비밀번호를 훔쳐보는 공격 방어
+  - 역할: 0~9 랜덤 키패드 배치, 클릭 위치 추적 방지 기능(교란), 신규 비밀번호 등록 및 로그인 검증 기능 제공
+  - 금융 보안 포인트: 고정 비밀번호 탈피, 동적 비밀번호 설정, 메모리 즉시 소멸 적용
 -->
   
 <!DOCTYPE html>
@@ -27,7 +27,7 @@
             align-items: center;
             min-height: 100vh;
             margin: 0;
-            transition: background-color 0.5s ease; /* [추가] 배경색 변환 애니메이션 */
+            transition: background-color 0.5s ease;
         }
 
         .container {
@@ -48,11 +48,21 @@
             font-size: 20px;
         }
 
+        /* 등록 상태에 따라 강조색을 다르게 줄 스타일 */
         .header p {
-            color: #7f8c8d;
             font-size: 13px;
             margin-top: 0;
             margin-bottom: 20px;
+            font-weight: bold;
+            transition: color 0.3s ease;
+        }
+
+        .status-register {
+            color: #3498db; /* 등록 단계는 파란색 */
+        }
+
+        .status-login {
+            color: #e67e22; /* 로그인 단계는 주황색 */
         }
 
         .password-display {
@@ -141,7 +151,7 @@
             margin: 4px 0;
         }
 
-        /* [추가] 모던 은행 앱 스타일 결과 화면 오버레이 */
+        /* 모던 은행 앱 스타일 결과 화면 오버레이 */
         .result-overlay {
             position: absolute;
             top: 0;
@@ -221,7 +231,8 @@
 
     <div class="header">
         <h2>Security 가상 키패드</h2>
-        <p>비밀번호(4자리)를 입력하세요.</p>
+        <!-- [수정] 자바스크립트가 유기적으로 메시지와 색상을 바꿀 수 있게 id와 클래스 지정 -->
+        <p id="statusMessage" class="status-register">신규 비밀번호 4자리를 등록하세요.</p>
     </div>
 
     <!-- 입력 상태 점 표시 -->
@@ -248,7 +259,8 @@
 </div>
 
 <script>
-    const CORRECT_PIN = ['1', '2', '3', '4'];
+    // [변경] 고정된 '1234'를 없애고 null로 시작하여 사용자가 직접 설정하게 변경
+    let savedPin = null; 
     let inputBuffer = [' ', ' ', ' ', ' ']; 
     let inputCount = 0;
 
@@ -266,7 +278,7 @@
 
         numbers.forEach((num, index) => {
             if (index === 9) {
-                createKeyButton('초기화', () => resetAll(), true);
+                createKeyButton('초기화', () => resetAll(true), true); // 초기화 시 강제 포맷 여부(true) 전달
             }
             createKeyButton(num, () => handleInput(num), false, num);
         });
@@ -286,7 +298,7 @@
         document.getElementById('keypad').appendChild(btn);
     }
 
-    // 실제 키패드 클릭 시 가짜 버튼들도 같이 타닥 깜빡이게 만드는 좌표 교란 함수
+    // 터치 좌표 교란 함수
     function triggerFakeClicks(realNum) {
         const allNumKeys = Array.from(document.querySelectorAll('.key-num'));
         const fakeKeys = allNumKeys.filter(key => key.getAttribute('data-num') !== realNum);
@@ -320,9 +332,37 @@
             triggerFakeClicks(num);
 
             if (inputCount === 4) {
-                setTimeout(verifyPassword, 300);
+                // 비밀번호가 아직 등록되지 않은 상태면 '등록 처리'로 보내고, 등록되었다면 '로그인 확인'으로 보냄
+                if (savedPin === null) {
+                    setTimeout(registerPassword, 300);
+                } else {
+                    setTimeout(verifyPassword, 300);
+                }
             }
         }
+    }
+
+    // [신규 추가] 첫 4자리 입력을 받아 비밀번호를 신규 등록하는 함수
+    function registerPassword() {
+        updateMemoryLog(`[등록 중] 입력하신 값을 새로운 비밀번호로 등록합니다...`);
+        
+        // 입력받은 버퍼 값을 복사해서 나만의 비밀번호로 저장
+        savedPin = [...inputBuffer]; 
+
+        // 보안 소멸(Zeroization) 작동
+        for (let i = 0; i < 4; i++) {
+            inputBuffer[i] = '0'; 
+        }
+
+        updateMemoryLog(`<span style="color: #2ecc71;">[등록 성공] 신규 비밀번호가 안전하게 저장되었습니다! (메모리 소멸 완료)</span>`);
+        
+        // UI 변경 (등록 모드 -> 로그인 검증 모드로 전환)
+        const msg = document.getElementById('statusMessage');
+        msg.innerText = "비밀번호를 입력하여 로그인하세요.";
+        msg.className = "status-login";
+
+        alert('비밀번호 등록 완료! 이제 방금 설정하신 비밀번호로 로그인해 보세요.');
+        resetAll(false); // 가짜 깜빡임만 초기화하고 비밀번호 데이터는 유지(false)
     }
 
     function deleteLast() {
@@ -334,27 +374,44 @@
         }
     }
 
-    function resetAll() {
+    // [최종 수정] 초기화 시 완전 포맷(비밀번호 재생성)인지, 임시 버퍼 리셋인지 구분
+    function resetAll(forceFormat = false) {
         inputBuffer = [' ', ' ', ' ', ' '];
         inputCount = 0;
+
         for(let i=0; i<4; i++) {
             document.getElementById(`dot${i}`).classList.remove('active');
         }
+
+        const allKeys = document.querySelectorAll('.key');
+        allKeys.forEach(key => {
+            key.classList.remove('fake-active');
+        });
+
+        // 사용자가 '초기화' 버튼을 눌렀을 때만 완전히 비밀번호를 포맷하고 1단계로 되돌림
+        if (forceFormat) {
+            savedPin = null; // 저장된 비밀번호 파괴
+            const msg = document.getElementById('statusMessage');
+            msg.innerText = "신규 비밀번호 4자리를 등록하세요.";
+            msg.className = "status-register";
+            updateMemoryLog(`<span style="color: #ffdd59;">[시스템] 비밀번호가 초기화되었습니다. 신규 비밀번호를 등록해 주세요.</span>`);
+        }
+
         generateKeypad(); 
-        updateMemoryLog(`[초기화] 메모리 버퍼 전체 초기화 완료`);
     }
 
-    // [수정] 모던 은행 앱 스타일 색상 연출 함수 연결
+    // 설정된 동적 비밀번호(savedPin)와 비교하는 검증 함수
     function verifyPassword() {
         updateMemoryLog(`[검증 중] 내부 암호 배열과 대조 중...`);
         
         let isCorrect = true;
         for (let i = 0; i < 4; i++) {
-            if (inputBuffer[i] !== CORRECT_PIN[i]) {
+            if (inputBuffer[i] !== savedPin[i]) {
                 isCorrect = false;
             }
         }
 
+        // 사용 완료된 버퍼는 즉시 소멸
         for (let i = 0; i < 4; i++) {
             inputBuffer[i] = '0'; 
         }
@@ -367,31 +424,28 @@
         const desc = document.getElementById('resultDesc');
         const body = document.body;
 
-        // 초기 클래스 제거
         overlay.className = 'result-overlay';
 
         if (isCorrect) {
-            // 성공: 초록색 화면 연출
             overlay.classList.add('active', 'success');
             icon.innerText = '✓';
             title.innerText = '인증 성공';
             desc.innerText = '금융 홈 화면으로 안전하게 진입합니다.';
-            body.style.backgroundColor = '#d4edda'; // 브라우저 배경 연한 초록색으로 변경
+            body.style.backgroundColor = '#d4edda'; 
         } else {
-            // 실패: 빨간색 화면 연출
             overlay.classList.add('active', 'fail');
             icon.innerText = '✗';
             title.innerText = '인증 실패';
             desc.innerText = '비밀번호가 일치하지 않습니다. 다시 시도해 주세요.';
-            body.style.backgroundColor = '#f8d7da'; // 브라우저 배경 연한 빨간색으로 변경
+            body.style.backgroundColor = '#f8d7da'; 
         }
     }
 
-    // 결과 화면 닫기 버튼 눌렀을 때 초기화
     function closeResult() {
-        document.getElementById('resultOverlay').classList.remove('active');
-        document.body.style.backgroundColor = 'var(--bg-color)'; // 원래 배경색으로 복구
-        resetAll();
+        const overlay = document.getElementById('resultOverlay');
+        overlay.classList.remove('active');
+        document.body.style.backgroundColor = 'var(--bg-color)'; 
+        resetAll(false); // 결과를 닫을 때는 등록된 비밀번호를 깨면 안 되므로 false 전달
     }
 
     function updateMemoryLog(message) {
