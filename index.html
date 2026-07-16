@@ -2,7 +2,7 @@
   [프론트엔드 UI/UX] 금융 보안 가상 키패드 화면 및 터치 좌표 교란 모듈
   
   - 역할: 0~9 랜덤 키패드 배치, 클릭 위치 추적 방지 기능(교란), 신규 비밀번호 등록 및 로그인 검증 기능 제공
-  - 금융 보안 포인트: 고정 비밀번호 탈피, 동적 비밀번호 설정, 메모리 즉시 소멸 적용
+  - 금융 보안 포인트: 입력/지우기 시 실시간 키패드 재배열(Shuffling), 동적 비밀번호 설정, 메모리 즉시 소멸 적용
 -->
 
 <!doctype html>
@@ -274,7 +274,7 @@
       let inputBuffer = [' ', ' ', ' ', ' ']
       let inputCount = 0
 
-      // [완벽 수정] 호출할 때마다 숫자 0~9가 완벽하게 뒤섞여 배치되는 함수
+      // 호출할 때마다 숫자 0~9가 완벽하게 뒤섞여 배치되는 함수 (셔플 버그 수정완료)
       function generateKeypad() {
         const numbers = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
 
@@ -349,6 +349,7 @@
         )
       }
 
+      // 숫자를 하나 누를 때마다 화면이 다이내믹하게 섞이도록 수정된 입력 핸들러
       function handleInput(num) {
         if (inputCount < 4) {
           inputBuffer[inputCount] = num
@@ -358,49 +359,27 @@
           updateMemoryLog(`[입력됨] Buffer[${inputCount - 1}] = '*'`)
           triggerFakeClicks(num)
 
+          // [핵심 추가] 4자리 다 누르기 전까지는 숫자 누를 때마다 실시간으로 판 섞기!
+          if (inputCount < 4) {
+            generateKeypad()
+          }
+
           if (inputCount === 4) {
-            if (savedPin === null) {
-              setTimeout(registerPassword, 300)
-            } else {
-              setTimeout(verifyPassword, 300)
-            }
+            setTimeout(verifyPassword, 300)
           }
         }
       }
 
-      // 첫 4자리 입력을 받아 비밀번호를 신규 등록하는 함수
-      function registerPassword() {
-        updateMemoryLog(
-          `[등록 중] 입력하신 값을 새로운 비밀번호로 등록합니다...`,
-        )
-
-        savedPin = [...inputBuffer]
-
-        // 보안 소멸(Zeroization) 작동
-        for (let i = 0; i < 4; i++) {
-          inputBuffer[i] = '0'
-        }
-
-        updateMemoryLog(
-          `<span style="color: #2ecc71;">[등록 성공] 신규 비밀번호가 안전하게 저장되었습니다! (메모리 소멸 완료)</span>`,
-        )
-
-        const msg = document.getElementById('statusMessage')
-        msg.innerText = '🔒 비밀번호를 입력하여 로그인하세요.'
-        msg.className = 'status-login'
-
-        alert(
-          '비밀번호 등록 완료! 이제 방금 설정하신 비밀번호로 로그인해 보세요.',
-        )
-        resetAll(false)
-      }
-
+      // 숫자를 하나 지울 때도 보안을 위해 키패드가 실시간으로 뒤섞이도록 수정
       function deleteLast() {
         if (inputCount > 0) {
           inputCount--
           inputBuffer[inputCount] = ' '
           document.getElementById(`dot${inputCount}`).classList.remove('active')
           updateMemoryLog(`[지움] Buffer[${inputCount}] 값 초기화 완료`)
+
+          // [핵심 추가] 지웠을 때도 판 뒤섞기!
+          generateKeypad()
         }
       }
 
